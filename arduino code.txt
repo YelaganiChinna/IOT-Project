@@ -1,0 +1,236 @@
+/////////////code//////////
+
+#include <LiquidCrystal.h>
+#include <TinyGPS++.h>
+
+// LCD connected to: RS=8, EN=9, D4=10, D5=11, D6=12, D7=13
+LiquidCrystal lcd(8, 9, 10, 11, 12, 13);
+
+// GPS and TinyGPS++ instance
+TinyGPSPlus gps;
+
+// Variables
+String cardID = "";
+String studentName = "";
+bool newCardScanned = false;
+String latitude = "";
+String longitude = "";
+
+// RFID card list
+const int totalStudents = 3;
+String validCards[totalStudents] = {
+  "55001AB931C7",   // Example card ID
+  "55001A91AF71",
+  "9876543210"
+};
+String studentNames[totalStudents] = {
+  "Gangadhar ",
+  "lokesh",
+  "Naresh"
+};
+
+void setup() {
+  Serial.begin(9600);      // Debugging
+  Serial1.begin(9600);     // RFID Reader
+  Serial2.begin(9600);     // GPS Module
+  Serial3.begin(9600);     // To NodeMCU
+
+  lcd.begin(16, 2);
+  lcd.print("Scan your card");
+
+  Serial.println("System Ready. Waiting for RFID...");
+}
+
+void loop() {
+  readGPS();
+  readRFID();
+
+  if (newCardScanned) {
+    if (findStudent(cardID)) {
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print(studentName);
+      lcd.setCursor(0, 1);
+      lcd.print("Location Tracked");
+
+      sendToNodeMCU(cardID, latitude, longitude);
+
+      Serial.println("Card: " + cardID);
+      Serial.println("Student: " + studentName);
+      Serial.println("Latitude: " + latitude);
+      Serial.println("Longitude: " + longitude);
+    } else {
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Unknown Card!");
+      lcd.setCursor(0, 1);
+      lcd.print("Try Again");
+
+      Serial.println("Unknown card scanned: " + cardID);
+    }
+
+    delay(5000);
+    lcd.clear();
+    lcd.print("Scan your card");
+    newCardScanned = false;
+  }
+}
+
+void readRFID() {
+  if (Serial1.available()) {
+    delay(100);
+    cardID = "";
+    while (Serial1.available()) {
+      char ch = Serial1.read();
+      if (isPrintable(ch)) {
+        cardID += ch;
+      }
+    }
+    cardID.trim();
+    newCardScanned = true;
+  }
+}
+
+void readGPS() {
+  while (Serial2.available()) {
+    gps.encode(Serial2.read());
+  }
+
+  if (gps.location.isValid()) {
+    latitude = String(gps.location.lat(), 6);
+    longitude = String(gps.location.lng(), 6);
+  } else {
+    latitude = "0.000000";
+    longitude = "0.000000";
+  }
+}
+
+bool findStudent(String scannedCard) {
+  for (int i = 0; i < totalStudents; i++) {
+    if (scannedCard == validCards[i]) {
+      studentName = studentNames[i];
+      return true;
+    }
+  }
+  studentName = "";
+  return false;
+}
+
+// Format: aCARDIDbLATcLONdSTUDENT
+void sendToNodeMCU(String card, String lat, String lon) {
+  String toSend = "a" + card + "b" + latitude + "c" + longitude + "d" + studentName;
+  Serial3.println(toSend);
+  Serial.println("Sent to NodeMCU: " + toSend);
+}
+
+
+
+
+///////////node mcu code/////////
+
+
+
+
+#include <ESP8266WiFi.h>
+String apiKey = "CNUJ33V2ABNG11BB";  // Enter your Write API key from ThingSpeak
+const char* ssid = "project";        // Replace with your Wi-Fi SSID
+const char* pass = "12345678";       // Replace with your Wi-Fi password
+const char* server = "api.thingspeak.com";
+
+WiFiClient client;
+
+void setup() {
+  Serial.begin(9600);
+  delay(10);
+
+  Serial.println("Connecting to Wi-Fi...");
+  WiFi.begin(ssid, pass);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println();
+  Serial.println("WiFi connected");
+}
+
+void loop() {
+  if (Serial.available() > 0) {
+    String data = Serial.readStringUntil('\n');
+
+    if (data.indexOf('a') != -1 && data.length() > 1) {
+      Serial.println(data);
+
+      int indexA = data.indexOf("a") + 1;
+      int indexB = data.indexOf("b") + 1;
+      int indexC = data.indexOf("c") + 1;
+      int indexD = data.indexOf("d") + 1;
+      int indexE = data.indexOf("e") + 1;
+      int indexF = data.indexOf("f") + 1;
+      int indexG = data.indexOf("g") + 1;
+      int indexH = data.indexOf("h") + 1;
+      int indexI = data.indexOf("i") + 1;
+
+      String valueA = data.substring(indexA, indexB - 1);
+      String valueB = data.substring(indexB, indexC - 1);
+      String valueC = data.substring(indexC, indexD - 1);
+      String valueD = data.substring(indexD, indexE - 1);
+      String valueE = data.substring(indexE, indexF - 1);
+      String valueF = data.substring(indexF, indexG - 1);
+      String valueG = data.substring(indexG, indexH - 1);
+      String valueH = data.substring(indexH, indexI - 1);
+      String valueI = data.substring(indexI);  // Assuming it goes to the end of the string
+
+      Serial.println("Value a: " + valueA);
+      Serial.println("Value b: " + valueB);
+      Serial.println("Value c: " + valueC);
+      Serial.println("Value d: " + valueD);
+      Serial.println("Value e: " + valueE);
+      Serial.println("Value f: " + valueF);
+      Serial.println("Value g: " + valueG);
+      Serial.println("Value h: " + valueH);
+      Serial.println("Value i: " + valueI);
+
+      if (client.connect(server, 80)) {
+        String postStr = "api_key=" + apiKey;
+        // String postStr = apiKey;
+        postStr += "&field1=" + valueA;
+        postStr += "&field2=" + valueB;
+        postStr += "&field3=" + valueC;
+        postStr += "&field4=" + valueD;
+        postStr += "&field5=" + valueE;
+        postStr += "&field6=" + valueF;
+        postStr += "&field7=" + valueG;
+        postStr += "&field8=" + valueI;
+
+        client.print("POST /update HTTP/1.1\n");
+        client.print("Host: api.thingspeak.com\n");
+        client.print("Connection: close\n");
+        // client.print("X-THINGSPEAKAPIKEY: " + apiKey + "\n");
+        client.print("Content-Type: application/x-www-form-urlencoded\n");
+        client.print("Content-Length: ");
+        client.print(postStr.length());
+        client.print("\n\n");
+        client.print(postStr);
+        // client.stop();
+
+        // Thingspeak requires a minimum 15-second delay between updates
+        delay(1000);  // Allow time for the server to process the request
+
+        //   if (client.connected()) {
+        //     Serial.println("Data sent to ThingSpeak successfully");
+        //     client.stop();
+        //   } else {
+        //     Serial.println("Failed to send data to ThingSpeak");
+        //   }
+      }
+      // else {
+      //   Serial.println("Failed to connect to ThingSpeak server");
+      // }
+
+      delay(15000);  // Minimum delay between updates for ThingSpeak
+    }
+  }
+}
+
